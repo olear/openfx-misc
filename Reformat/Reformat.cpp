@@ -221,6 +221,15 @@ public:
                 _boxFixed_saved = true;
             }
         }
+        // On Natron, hide the uniform parameter if it is false and not animated,
+        // since uniform scaling is easy through Natron's GUI.
+        // The parameter is kept for backward compatibility.
+        // Fixes https://github.com/MrKepzie/Natron/issues/1204
+        if (getImageEffectHostDescription()->isNatron &&
+            !_scaleUniform->getValue() &&
+            _scaleUniform->getNumKeys() == 0) {
+            _scaleUniform->setIsSecret(true);
+        }
 
         refreshVisibility();
         refreshDynamicProps();
@@ -527,17 +536,23 @@ ReformatPlugin::getInverseTransformCanonical(const double time,
 void ReformatPlugin::setBoxValues(const double time)
 {
     ReformatTypeEnum type = (ReformatTypeEnum)_type->getValue();
-
+    
     switch (type) {
         case eReformatTypeToFormat: {
-            EParamFormat format = (EParamFormat)_format->getValue();
-            assert(0 <= (int)format && (int)format < eParamFormatCount);
-            int w = 0, h = 0;
-            double par = -1;
-            getFormatResolution(format, &w, &h, &par);
-            assert(par != -1);
-            _boxSize->setValue(w, h);
-            _boxPAR->setValue(par);
+            
+            //size & par have been set by natron with the Format choice extension
+            if (!gHostIsNatron) {
+                EParamFormat format = (EParamFormat)_format->getValue();
+                assert(0 <= (int)format && (int)format < eParamFormatCount);
+                int w = 0, h = 0;
+                double par = -1;
+                getFormatResolution(format, &w, &h, &par);
+                assert(par != -1);
+                _boxSize->setValue(w, h);
+                _boxPAR->setValue(par);
+            }
+                
+            
             _boxFixed->setValue(true);
             break;
         }
@@ -823,8 +838,9 @@ void ReformatPluginFactory::describeInContext(OFX::ImageEffectDescriptor &desc, 
         BooleanParamDescriptor* param = desc.defineBooleanParam(kParamScaleUniform);
         param->setLabel(kParamScaleUniformLabel);
         param->setHint(kParamScaleUniformHint);
-        // don't check it by default: it is easy to obtain Uniform scaling using the slider or the interact
-        param->setDefault(true);
+        // uniform parameter is false by default on Natron
+        // https://github.com/MrKepzie/Natron/issues/1204
+        param->setDefault(!OFX::getImageEffectHostDescription()->isNatron);
         param->setAnimates(true);
         param->setLayoutHint(OFX::eLayoutHintDivider);
         if (page) {
