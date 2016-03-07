@@ -30,6 +30,10 @@
 #include "ofxsTransformInteract.h"
 #include "ofxsCoords.h"
 
+using namespace OFX;
+
+OFXS_NAMESPACE_ANONYMOUS_ENTER
+
 #define kPluginName "TransformOFX"
 #define kPluginMaskedName "TransformMaskedOFX"
 #define kPluginGrouping "Transform"
@@ -48,8 +52,6 @@
 #define kPluginVersionMinor 0 // Increment this when you have fixed a bug or made it faster.
 
 #define kParamSrcClipChanged "srcClipChanged"
-
-using namespace OFX;
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,7 +92,15 @@ public:
         assert(_translate && _rotate && _scale && _scaleUniform && _skewX && _skewY && _skewOrder && _center && _interactive);
         _srcClipChanged = fetchBooleanParam(kParamSrcClipChanged);
         assert(_srcClipChanged);
-        
+        // On Natron, hide the uniform parameter if it is false and not animated,
+        // since uniform scaling is easy through Natron's GUI.
+        // The parameter is kept for backward compatibility.
+        // Fixes https://github.com/MrKepzie/Natron/issues/1204
+        if (getImageEffectHostDescription()->isNatron &&
+            !_scaleUniform->getValue() &&
+            _scaleUniform->getNumKeys() == 0) {
+            _scaleUniform->setIsSecret(true);
+        }
     }
 
 private:
@@ -352,8 +362,6 @@ TransformPlugin::changedClip(const InstanceChangedArgs &args, const std::string 
 }
 
 
-using namespace OFX;
-
 mDeclarePluginFactory(TransformPluginFactory, {}, {});
 
 
@@ -494,3 +502,5 @@ static DirBlurPluginFactory p3(kPluginDirBlurIdentifier, kPluginVersionMajor, kP
 mRegisterPluginFactoryInstance(p1)
 mRegisterPluginFactoryInstance(p2)
 mRegisterPluginFactoryInstance(p3)
+
+OFXS_NAMESPACE_ANONYMOUS_EXIT

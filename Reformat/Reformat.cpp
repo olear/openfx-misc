@@ -33,6 +33,10 @@
 #include "ofxsFormatResolution.h"
 #include "ofxsCoords.h"
 
+using namespace OFX;
+
+OFXS_NAMESPACE_ANONYMOUS_ENTER
+
 #define kPluginName "ReformatOFX"
 #define kPluginGrouping "Transform"
 #define kPluginDescription "Convert the image to another format or size\n"\
@@ -134,8 +138,6 @@ enum ResizeEnum
 "Normally, all pixels outside of the outside format are clipped off. If this is checked, the whole image RoD is kept.\n" \
 "By default, transforms are only concatenated upstream, i.e. the image is rendered by this effect by concatenating upstream transforms (e.g. CornerPin, Transform...), and the original image is resampled only once. If checked, and there are concatenating transform effects downstream, the image is rendered by the last consecutive concatenating effect."
 
-using namespace OFX;
-
 
 static bool gHostCanTransform;
 static bool gHostIsNatron = false;
@@ -220,6 +222,15 @@ public:
                 _boxPAR_saved = projectPAR;
                 _boxFixed_saved = true;
             }
+        }
+        // On Natron, hide the uniform parameter if it is false and not animated,
+        // since uniform scaling is easy through Natron's GUI.
+        // The parameter is kept for backward compatibility.
+        // Fixes https://github.com/MrKepzie/Natron/issues/1204
+        if (getImageEffectHostDescription()->isNatron &&
+            !_scaleUniform->getValue() &&
+            _scaleUniform->getNumKeys() == 0) {
+            _scaleUniform->setIsSecret(true);
         }
 
         refreshVisibility();
@@ -387,6 +398,10 @@ ReformatPlugin::getInverseTransformCanonical(const double time,
     // same as getRegionOfDefinition, but without rounding, and without conversion to pixels
 
     OfxPointI boxSize = _boxSize->getValueAtTime(time);
+    if (boxSize.x == 0 && boxSize.y == 0) {
+        //probably scale is 0
+        return false;
+    }
     double boxPAR = _boxPAR->getValueAtTime(time);
     OfxRectD boxRod = { 0., 0., boxSize.x * boxPAR, boxSize.y};
 
@@ -527,17 +542,23 @@ ReformatPlugin::getInverseTransformCanonical(const double time,
 void ReformatPlugin::setBoxValues(const double time)
 {
     ReformatTypeEnum type = (ReformatTypeEnum)_type->getValue();
-
+    
     switch (type) {
         case eReformatTypeToFormat: {
-            EParamFormat format = (EParamFormat)_format->getValue();
-            assert(0 <= (int)format && (int)format < eParamFormatCount);
-            int w = 0, h = 0;
-            double par = -1;
-            getFormatResolution(format, &w, &h, &par);
-            assert(par != -1);
-            _boxSize->setValue(w, h);
-            _boxPAR->setValue(par);
+            
+            //size & par have been set by natron with the Format choice extension
+            if (!gHostIsNatron) {
+                EParamFormat format = (EParamFormat)_format->getValue();
+                assert(0 <= (int)format && (int)format < eParamFormatCount);
+                int w = 0, h = 0;
+                double par = -1;
+                getFormatResolution(format, &w, &h, &par);
+                assert(par != -1);
+                _boxSize->setValue(w, h);
+                _boxPAR->setValue(par);
+            }
+                
+            
             _boxFixed->setValue(true);
             break;
         }
@@ -823,8 +844,9 @@ void ReformatPluginFactory::describeInContext(OFX::ImageEffectDescriptor &desc, 
         BooleanParamDescriptor* param = desc.defineBooleanParam(kParamScaleUniform);
         param->setLabel(kParamScaleUniformLabel);
         param->setHint(kParamScaleUniformHint);
-        // don't check it by default: it is easy to obtain Uniform scaling using the slider or the interact
-        param->setDefault(true);
+        // uniform parameter is false by default on Natron
+        // https://github.com/MrKepzie/Natron/issues/1204
+        param->setDefault(!OFX::getImageEffectHostDescription()->isNatron);
         param->setAnimates(true);
         param->setLayoutHint(OFX::eLayoutHintDivider);
         if (page) {
@@ -932,3 +954,5 @@ OFX::ImageEffect* ReformatPluginFactory::createInstance(OfxImageEffectHandle han
 
 static ReformatPluginFactory p(kPluginIdentifier, kPluginVersionMajor, kPluginVersionMinor);
 mRegisterPluginFactoryInstance(p)
+
+OFXS_NAMESPACE_ANONYMOUS_EXIT

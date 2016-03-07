@@ -41,6 +41,10 @@
 #error "This plugin requires CImg 1.6.1, please upgrade CImg."
 #endif
 
+using namespace OFX;
+
+OFXS_NAMESPACE_ANONYMOUS_ENTER
+
 #define kPluginName          "BlurCImg"
 #define kPluginGrouping      "Filter"
 #define kPluginDescription \
@@ -209,7 +213,6 @@ using namespace cimg_library;
 
 // Exponentiation by squaring
 // works with positive or negative integer exponents
-namespace {
 template<typename T>
 T
 ipow(T base, int exp)
@@ -235,7 +238,6 @@ ipow(T base, int exp)
     }
 
     return result;
-}
 }
 
 static inline
@@ -390,7 +392,6 @@ box(CImg<T>& img, const float width, const int iter, const int order, const char
     return/* *this*/;
 }
 
-using namespace OFX;
 
 /// Blur plugin
 struct CImgBlurParams
@@ -456,6 +457,15 @@ public:
         if (blurPlugin != eBlurPluginChromaBlur) {
             _expandRoD = fetchBooleanParam(kParamExpandRoD);
             assert(_expandRoD);
+        }
+        // On Natron, hide the uniform parameter if it is false and not animated,
+        // since uniform scaling is easy through Natron's GUI.
+        // The parameter is kept for backward compatibility.
+        // Fixes https://github.com/MrKepzie/Natron/issues/1204
+        if (getImageEffectHostDescription()->isNatron &&
+            !_uniform->getValue() &&
+            _uniform->getNumKeys() == 0) {
+            _uniform->setIsSecret(true);
         }
     }
 
@@ -868,7 +878,9 @@ CImgBlurPlugin::describeInContext(OFX::ImageEffectDescriptor& desc, OFX::Context
         OFX::BooleanParamDescriptor *param = desc.defineBooleanParam(kParamUniform);
         param->setLabel(kParamUniformLabel);
         param->setHint(kParamUniformHint);
-        param->setDefault(true);
+        // uniform parameter is false by default on Natron
+        // https://github.com/MrKepzie/Natron/issues/1204
+        param->setDefault(!OFX::getImageEffectHostDescription()->isNatron);
         if (page) {
             page->addChild(*param);
         }
@@ -1065,3 +1077,5 @@ mRegisterPluginFactoryInstance(p1)
 mRegisterPluginFactoryInstance(p2)
 mRegisterPluginFactoryInstance(p3)
 mRegisterPluginFactoryInstance(p4)
+
+OFXS_NAMESPACE_ANONYMOUS_EXIT

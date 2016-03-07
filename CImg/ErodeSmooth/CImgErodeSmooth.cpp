@@ -40,6 +40,10 @@
 #error "This plugin requires CImg 1.6.1 produces incorrect results, please upgrade CImg."
 #endif
 
+using namespace OFX;
+
+OFXS_NAMESPACE_ANONYMOUS_ENTER
+
 #define kPluginName          "ErodeSmoothCImg"
 #define kPluginGrouping      "Filter"
 #define kPluginDescription \
@@ -294,7 +298,6 @@ box(CImg<T>& img, const float width, const int iter, const int order, const char
     return/* *this*/;
 }
 
-using namespace OFX;
 
 #define ERODESMOOTH_MIN 1.e-8 // minimum value for the weight
 #define ERODESMOOTH_OFFSET 0.1 // offset to the image values to avoid divisions by zero
@@ -335,6 +338,15 @@ public:
         assert(_filter);
         _expandRoD = fetchBooleanParam(kParamExpandRoD);
         assert(_expandRoD);
+        // On Natron, hide the uniform parameter if it is false and not animated,
+        // since uniform scaling is easy through Natron's GUI.
+        // The parameter is kept for backward compatibility.
+        // Fixes https://github.com/MrKepzie/Natron/issues/1204
+        if (getImageEffectHostDescription()->isNatron &&
+            !_uniform->getValue() &&
+            _uniform->getNumKeys() == 0) {
+            _uniform->setIsSecret(true);
+        }
     }
 
     virtual void getValuesAtTime(double time, CImgErodeSmoothParams& params) OVERRIDE FINAL
@@ -628,7 +640,9 @@ void CImgErodeSmoothPluginFactory::describeInContext(OFX::ImageEffectDescriptor&
         OFX::BooleanParamDescriptor *param = desc.defineBooleanParam(kParamUniform);
         param->setLabel(kParamUniformLabel);
         param->setHint(kParamUniformHint);
-        param->setDefault(true);
+        // uniform parameter is false by default on Natron
+        // https://github.com/MrKepzie/Natron/issues/1204
+        param->setDefault(!OFX::getImageEffectHostDescription()->isNatron);
         if (page) {
             page->addChild(*param);
         }
@@ -699,3 +713,5 @@ OFX::ImageEffect* CImgErodeSmoothPluginFactory::createInstance(OfxImageEffectHan
 
 static CImgErodeSmoothPluginFactory p(kPluginIdentifier, kPluginVersionMajor, kPluginVersionMinor);
 mRegisterPluginFactoryInstance(p)
+
+OFXS_NAMESPACE_ANONYMOUS_EXIT
